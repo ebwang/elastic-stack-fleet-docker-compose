@@ -30,6 +30,12 @@ services:
           "      - localhost\n"\
           "    ip:\n"\
           "      - 127.0.0.1\n"\
+          "  - name: logstash\n"\
+          "    dns:\n"\
+          "      - logstash\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
           "  - name: kib01\n"\
           "    dns:\n"\
           "      - kib01\n"\
@@ -48,8 +54,8 @@ services:
         fi;
         echo "Setting file permissions"
         chown -R root:root config/certs;
-        find . -type d -exec chmod 750 \{\} \;;
-        find . -type f -exec chmod 640 \{\} \;;
+        find . -type d -exec chmod 750 {} \;;
+        find . -type f -exec chmod 644 {} \;;
         echo "Waiting for Elasticsearch availability";
         until curl -s --cacert config/certs/ca/ca.crt https://es01:9200 | grep -q "missing authentication credentials"; do sleep 30; done;
         echo "Setting kibana_system password";
@@ -126,19 +132,15 @@ services:
       - SERVER_SSL_CERTIFICATE=config/certs/kib01/kib01.crt
       - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=abc45678901234567890123456789012
       - XPACK_ACTIONS_PRECONFIGUREDALERTHISTORYESINDEX=true     
-
       - KIBANA_FLEET_SETUP=1
       - KIBANA_FLEET_HOST=https://kib01:5601
       - KIBANA_FLEET_USERNAME=kibana_system
       - KIBANA_FLEET_PASSWORD=${KIBANA_PASSWORD}
       - KIBANA_FLEET_CA=/usr/share/kibana/config/certs/ca/ca.crt
-
       - XPACK_FLEET_ENABLED=true
       - XPACK_FLEET_AGENTS_ENABLED=true
       - XPACK_FLEET_AGENTS_FLEET_SERVER_HOSTS=["${FLEET_URL}"]
-
       - ES_URL=${ES_URL}
-
     mem_limit: ${MEM_LIMIT}
     healthcheck:
       test:
@@ -171,15 +173,12 @@ services:
       - FLEET_SERVER_HOST=0.0.0.0
       - FLEET_SERVER_PORT=8220
       - FLEET_SERVER_POLICY_ID=fleet-server-policy
-
       - KIBANA_FLEET_SETUP=1
       - KIBANA_FLEET_HOST=https://kib01:5601
-
       - ELASTICSEARCH_HOST=https://es01:9200
       - ELASTICSEARCH_USERNAME=elastic
       - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
       - ELASTICSEARCH_CA=/usr/share/elastic-agent/config/certs/ca/ca.crt
-
       - FLEET_URL=${FLEET_URL}
     healthcheck:
       test:
@@ -190,6 +189,30 @@ services:
       interval: 10s
       timeout: 10s
       retries: 120
+
+  # Logstash service with TLS configuration for both its Beats input and Elasticsearch output
+  logstash:
+    user: root
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    depends_on:
+      es01:
+        condition: service_healthy
+      kib01:
+        condition: service_healthy  
+    ports:
+      - "5044:5044"  # Port for Beats (or other) secure input
+    volumes:
+      - certs:/usr/share/logstash/config/certs
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+      - ./logstash/data:/usr/share/logstash/data
+    # Optionally set any Logstash-specific environment variables if needed
+    environment:
+      - xpack.monitoring.enabled=false
+      - ELASTIC_USER=elastic
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ELASTIC_HOSTS=https://es01:9200
+    #command: logstash -f /usr/share/logstash/pipeline/logstash.conf
+    command: logstash -f /usr/share/logstash/pipeline/nginx-access-final.conf
 
 volumes:
   certs:
