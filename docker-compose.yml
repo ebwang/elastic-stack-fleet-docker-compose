@@ -238,7 +238,7 @@ services:
      - ./filebeat/filebeat_ingest_data/:/usr/share/filebeat/ingest_data/
      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
      - "/var/lib/docker/containers:/var/lib/docker/containers:ro"
-     - "/var/run/docker.sock:/var/run/docker.sock:ro"
+     - "/var/run/docker.sock:/var/run/docker.sock"
    environment:
      - ELASTIC_USER=elastic
      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
@@ -246,6 +246,8 @@ services:
      - KIBANA_HOSTS=http://kibana:5601
      - LOGSTASH_HOSTS=http://logstash:9600
   webapp:
+    labels:
+      co.elastic.logs/enabled: "true"
     container_name: webapp
     build:
       context: app
@@ -258,7 +260,24 @@ services:
     ports:
       - 8000:8000
 
+  postgres:
+    labels:
+      co.elastic.logs/enabled: "true"
+    container_name: postgres
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_USER: webapp_user
+      POSTGRES_PASSWORD: webapp_password
+      POSTGRES_DB: webapp_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
-volumes:  
+
+volumes:
+  postgres_data:
+    driver: local
   certs:
     driver: local
